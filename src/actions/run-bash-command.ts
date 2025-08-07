@@ -111,7 +111,7 @@ uname -a`,
       }
       
       // Handle mount configuration if provided
-      if (mountType && mountSource) {
+      if (mountType && mountType !== '' && mountSource) {
         // Create mount point if it doesn't exist
         if (!existsSync(mountPoint)) {
           mkdirSync(mountPoint, { recursive: true });

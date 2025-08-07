@@ -11,17 +11,18 @@ export const runBashCommandSandboxed = createAction({
       description: 'The bash command or script to execute',
       required: true,
       defaultValue: `#!/bin/bash
-# Example: Process files from mounted drive
-echo "Looking for files in mounted directory..."
-if [ -d "/mnt/network" ]; then
-  echo "Files in /mnt/network:"
-  ls -la /mnt/network
-  echo ""
-  echo "Total size:"
-  du -sh /mnt/network
-else
-  echo "Mount point /mnt/network not found"
-fi`,
+# Example: Show system information in container
+echo "Container Information:"
+echo "===================="
+echo "Hostname: $(hostname)"
+echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
+echo ""
+echo "Current directory: $(pwd)"
+echo "Files:"
+ls -la
+echo ""
+echo "Disk usage:"
+df -h`,
     }),
     mountConfig: Property.Object({
       displayName: 'Mount Configuration (Optional)',
@@ -133,13 +134,17 @@ fi`,
         // Build mount command
         let mountCommand = '';
         if (mountType === 'nfs') {
-          // Install nfs utilities if needed
-          fullScript += 'apt-get update && apt-get install -y nfs-common || true\n';
+          // Install nfs utilities if needed - redirect output to stderr
+          fullScript += 'echo "Installing NFS utilities..." >&2\n';
+          fullScript += 'apt-get update >&2 && apt-get install -y nfs-common >&2 || true\n';
+          fullScript += 'echo "NFS utilities installation complete" >&2\n';
           const nfsOptions = mountOptions || 'rw,sync';
           mountCommand = `mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
         } else if (mountType === 'smb') {
-          // Install cifs utilities if needed
-          fullScript += 'apt-get update && apt-get install -y cifs-utils || true\n';
+          // Install cifs utilities if needed - redirect output to stderr
+          fullScript += 'echo "Installing SMB/CIFS utilities..." >&2\n';
+          fullScript += 'apt-get update >&2 && apt-get install -y cifs-utils >&2 || true\n';
+          fullScript += 'echo "SMB/CIFS utilities installation complete" >&2\n';
           let smbOptions = mountOptions || 'rw';
           if (mountUsername) {
             smbOptions += `,username=${mountUsername}`;
