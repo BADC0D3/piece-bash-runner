@@ -135,16 +135,26 @@ df -h`,
         let mountCommand = '';
         if (mountType === 'nfs') {
           // Install nfs utilities if needed - redirect output to stderr
-          fullScript += 'echo "Installing NFS utilities..." >&2\n';
-          fullScript += 'apt-get update >&2 && apt-get install -y nfs-common >&2 || true\n';
-          fullScript += 'echo "NFS utilities installation complete" >&2\n';
+          fullScript += `#!/bin/bash
+# Don't exit on error - we want to continue even if mount fails
+set +e
+
+echo "Installing NFS utilities..." >&2
+apt-get update >&2 && apt-get install -y nfs-common >&2 || echo "Package installation had issues but continuing..." >&2
+echo "NFS utilities installation complete" >&2
+`;
           const nfsOptions = mountOptions || 'rw,sync';
           mountCommand = `mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
         } else if (mountType === 'smb') {
           // Install cifs utilities if needed - redirect output to stderr
-          fullScript += 'echo "Installing SMB/CIFS utilities..." >&2\n';
-          fullScript += 'apt-get update >&2 && apt-get install -y cifs-utils >&2 || true\n';
-          fullScript += 'echo "SMB/CIFS utilities installation complete" >&2\n';
+          fullScript += `#!/bin/bash
+# Don't exit on error - we want to continue even if mount fails
+set +e
+
+echo "Installing SMB/CIFS utilities..." >&2
+apt-get update >&2 && apt-get install -y cifs-utils >&2 || echo "Package installation had issues but continuing..." >&2
+echo "SMB/CIFS utilities installation complete" >&2
+`;
           let smbOptions = mountOptions || 'rw';
           if (mountUsername) {
             smbOptions += `,username=${mountUsername}`;
@@ -157,25 +167,41 @@ df -h`,
         
         fullScript += `
 # Create mount point
-mkdir -p ${mountPoint}
+mkdir -p ${mountPoint} || true
 
 # Try to mount network drive (continue on failure)
 echo "Attempting to mount ${mountSource} to ${mountPoint}..." >&2
-if ${mountCommand}; then
+if ${mountCommand} 2>&1; then
   echo "Mount successful" >&2
 else
-  echo "Mount failed, but continuing with command execution" >&2
+  echo "Mount failed (exit code: $?), but continuing with command execution" >&2
 fi
+
+echo "Executing user command..." >&2
 
 # Execute user command regardless of mount status
 ${command}
 
+# Save the exit code
+COMMAND_EXIT_CODE=$?
+
 # Try to unmount (ignore errors)
+echo "Cleaning up mount..." >&2
 umount ${mountPoint} 2>/dev/null || true
+
+# Exit with the command's exit code
+exit $COMMAND_EXIT_CODE
 `;
       } else {
-        fullScript = command;
-      }
+        fullScript = `#!/bin/bash
+# No mount configuration - just run the command
+set +e
+
+echo "No mount configuration detected, executing command directly..." >&2
+
+${command}
+`;
+        }
       
       // Encode the script to avoid shell escaping issues
       const encodedScript = Buffer.from(fullScript).toString('base64');
