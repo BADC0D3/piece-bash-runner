@@ -159,13 +159,18 @@ df -h`,
 # Create mount point
 mkdir -p ${mountPoint}
 
-# Mount network drive
-${mountCommand}
+# Try to mount network drive (continue on failure)
+echo "Attempting to mount ${mountSource} to ${mountPoint}..." >&2
+if ${mountCommand}; then
+  echo "Mount successful" >&2
+else
+  echo "Mount failed, but continuing with command execution" >&2
+fi
 
-# Execute user command
+# Execute user command regardless of mount status
 ${command}
 
-# Unmount
+# Try to unmount (ignore errors)
 umount ${mountPoint} 2>/dev/null || true
 `;
       } else {
