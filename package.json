@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@activepieces/pieces-framework": "^0.7.0",
-    "dockerode": "^3.3.5"
+    "dockerode": "^4.0.7"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.20",
