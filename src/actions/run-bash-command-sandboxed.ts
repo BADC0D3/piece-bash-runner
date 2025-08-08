@@ -185,7 +185,7 @@ mkdir -p ${mountPoint} 2>/dev/null || echo "[Warning] Could not create mount poi
 
 # Mount network drive as root
 if ${mountCommand}; then
-  echo "[Info] Mount successful"
+  :  # Mount successful, no output
 else
   MOUNT_EXIT=$?
   echo "[Error] Mount failed with exit code: $MOUNT_EXIT" >&2
