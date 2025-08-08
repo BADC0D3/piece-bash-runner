@@ -1,6 +1,6 @@
 {
   "name": "@badc0d3/piece-bash-runner",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Run bash commands with NFS/SMB mounting support in Activepieces",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

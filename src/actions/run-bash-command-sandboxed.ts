@@ -144,12 +144,32 @@ set +e
 
 echo "[Start] Script execution started" >&2
 echo "[Setup] Installing NFS utilities..." >&2
-apt-get update >/dev/null 2>&1 && apt-get install -y nfs-common >/dev/null 2>&1
-if [ $? -eq 0 ]; then
+
+# Set non-interactive mode for apt-get
+export DEBIAN_FRONTEND=noninteractive
+
+# Try to install with timeout and non-interactive flags
+timeout 30 apt-get update -qq >/dev/null 2>&1
+UPDATE_EXIT=$?
+
+if [ $UPDATE_EXIT -eq 124 ]; then
+  echo "[Setup] apt-get update timed out after 30 seconds" >&2
+elif [ $UPDATE_EXIT -ne 0 ]; then
+  echo "[Setup] apt-get update failed with exit code: $UPDATE_EXIT" >&2
+fi
+
+timeout 30 apt-get install -y --no-install-recommends nfs-common >/dev/null 2>&1
+INSTALL_EXIT=$?
+
+if [ $INSTALL_EXIT -eq 124 ]; then
+  echo "[Setup] apt-get install timed out after 30 seconds" >&2
+elif [ $INSTALL_EXIT -eq 0 ]; then
   echo "[Setup] NFS utilities installed successfully" >&2
 else
-  echo "[Setup] Failed to install NFS utilities (exit code: $?), continuing anyway..." >&2
+  echo "[Setup] Failed to install NFS utilities (exit code: $INSTALL_EXIT), continuing anyway..." >&2
 fi
+
+echo "[Setup] Package installation phase complete" >&2
 `;
           const nfsOptions = mountOptions || 'rw,sync';
           mountCommand = `mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
@@ -161,12 +181,32 @@ set +e
 
 echo "[Start] Script execution started" >&2
 echo "[Setup] Installing SMB/CIFS utilities..." >&2
-apt-get update >/dev/null 2>&1 && apt-get install -y cifs-utils >/dev/null 2>&1
-if [ $? -eq 0 ]; then
+
+# Set non-interactive mode for apt-get
+export DEBIAN_FRONTEND=noninteractive
+
+# Try to install with timeout and non-interactive flags
+timeout 30 apt-get update -qq >/dev/null 2>&1
+UPDATE_EXIT=$?
+
+if [ $UPDATE_EXIT -eq 124 ]; then
+  echo "[Setup] apt-get update timed out after 30 seconds" >&2
+elif [ $UPDATE_EXIT -ne 0 ]; then
+  echo "[Setup] apt-get update failed with exit code: $UPDATE_EXIT" >&2
+fi
+
+timeout 30 apt-get install -y --no-install-recommends cifs-utils >/dev/null 2>&1
+INSTALL_EXIT=$?
+
+if [ $INSTALL_EXIT -eq 124 ]; then
+  echo "[Setup] apt-get install timed out after 30 seconds" >&2
+elif [ $INSTALL_EXIT -eq 0 ]; then
   echo "[Setup] SMB/CIFS utilities installed successfully" >&2
 else
-  echo "[Setup] Failed to install SMB/CIFS utilities (exit code: $?), continuing anyway..." >&2
+  echo "[Setup] Failed to install SMB/CIFS utilities (exit code: $INSTALL_EXIT), continuing anyway..." >&2
 fi
+
+echo "[Setup] Package installation phase complete" >&2
 `;
           let smbOptions = mountOptions || 'rw';
           if (mountUsername) {
@@ -180,6 +220,7 @@ fi
         
         fullScript += `
 # Debug info
+echo "[Debug] Script continuing after package installation" >&2
 echo "[Debug] Current directory: $(pwd)" >&2
 echo "[Debug] Current user: $(whoami)" >&2
 
