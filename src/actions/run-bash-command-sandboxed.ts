@@ -98,6 +98,9 @@ df -h`,
     
     const imageName = dockerImage || 'ubuntu:latest';
     
+    // Clean the user's command - remove any leading shebang
+    const cleanedCommand = command.replace(/^#!.*\n/, '').trim();
+    
     try {
       // Check if image exists locally
       console.log(`Checking for Docker image ${imageName}...`);
@@ -139,6 +142,7 @@ df -h`,
 # Don't exit on error - we want to continue even if mount fails
 set +e
 
+echo "[Start] Script execution started" >&2
 echo "[Setup] Installing NFS utilities..." >&2
 apt-get update >/dev/null 2>&1 && apt-get install -y nfs-common >/dev/null 2>&1
 if [ $? -eq 0 ]; then
@@ -155,6 +159,7 @@ fi
 # Don't exit on error - we want to continue even if mount fails
 set +e
 
+echo "[Start] Script execution started" >&2
 echo "[Setup] Installing SMB/CIFS utilities..." >&2
 apt-get update >/dev/null 2>&1 && apt-get install -y cifs-utils >/dev/null 2>&1
 if [ $? -eq 0 ]; then
@@ -193,10 +198,10 @@ else
 fi
 
 echo "[Execute] Running user command..." >&2
-echo "[Execute] Command: ${command}" >&2
+echo "[Execute] Command: ${cleanedCommand}" >&2
 
 # Execute user command regardless of mount status
-${command}
+${cleanedCommand}
 
 # Save the exit code
 COMMAND_EXIT_CODE=$?
@@ -217,9 +222,9 @@ set +e
 echo "[Info] No mount configuration detected" >&2
 echo "[Debug] Current directory: $(pwd)" >&2
 echo "[Debug] Current user: $(whoami)" >&2
-echo "[Execute] Running command: ${command}" >&2
+echo "[Execute] Running command: ${cleanedCommand}" >&2
 
-${command}
+${cleanedCommand}
 
 # Save and report exit code
 COMMAND_EXIT_CODE=$?
@@ -230,6 +235,9 @@ exit $COMMAND_EXIT_CODE
       
       // Encode the script to avoid shell escaping issues
       const encodedScript = Buffer.from(fullScript).toString('base64');
+      
+      console.log(`Creating container with image: ${imageName}`);
+      console.log(`Script length: ${fullScript.length} characters`);
       
       // Create container
       const container = await docker.createContainer({
