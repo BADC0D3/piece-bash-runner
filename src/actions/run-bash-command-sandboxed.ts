@@ -142,9 +142,6 @@ df -h`,
 # Don't exit on error - we want to continue even if mount fails
 set +e
 
-echo "[Start] Script execution started" >&2
-echo "[Setup] Installing NFS utilities..." >&2
-
 # Set non-interactive mode for apt-get
 export DEBIAN_FRONTEND=noninteractive
 
@@ -153,23 +150,19 @@ timeout 30 apt-get update -qq >/dev/null 2>&1
 UPDATE_EXIT=$?
 
 if [ $UPDATE_EXIT -eq 124 ]; then
-  echo "[Setup] apt-get update timed out after 30 seconds" >&2
+  echo "[Error] apt-get update timed out after 30 seconds" >&2
 elif [ $UPDATE_EXIT -ne 0 ]; then
-  echo "[Setup] apt-get update failed with exit code: $UPDATE_EXIT" >&2
+  echo "[Error] apt-get update failed with exit code: $UPDATE_EXIT" >&2
 fi
 
 timeout 30 apt-get install -y --no-install-recommends nfs-common >/dev/null 2>&1
 INSTALL_EXIT=$?
 
 if [ $INSTALL_EXIT -eq 124 ]; then
-  echo "[Setup] apt-get install timed out after 30 seconds" >&2
-elif [ $INSTALL_EXIT -eq 0 ]; then
-  echo "[Setup] NFS utilities installed successfully" >&2
-else
-  echo "[Setup] Failed to install NFS utilities (exit code: $INSTALL_EXIT), continuing anyway..." >&2
+  echo "[Error] Package installation timed out after 30 seconds" >&2
+elif [ $INSTALL_EXIT -ne 0 ]; then
+  echo "[Error] Package installation failed with exit code: $INSTALL_EXIT" >&2
 fi
-
-echo "[Setup] Package installation phase complete" >&2
 `;
           const nfsOptions = mountOptions || 'rw,sync';
           mountCommand = `mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
@@ -179,9 +172,6 @@ echo "[Setup] Package installation phase complete" >&2
 # Don't exit on error - we want to continue even if mount fails
 set +e
 
-echo "[Start] Script execution started" >&2
-echo "[Setup] Installing SMB/CIFS utilities..." >&2
-
 # Set non-interactive mode for apt-get
 export DEBIAN_FRONTEND=noninteractive
 
@@ -190,23 +180,19 @@ timeout 30 apt-get update -qq >/dev/null 2>&1
 UPDATE_EXIT=$?
 
 if [ $UPDATE_EXIT -eq 124 ]; then
-  echo "[Setup] apt-get update timed out after 30 seconds" >&2
+  echo "[Error] apt-get update timed out after 30 seconds" >&2
 elif [ $UPDATE_EXIT -ne 0 ]; then
-  echo "[Setup] apt-get update failed with exit code: $UPDATE_EXIT" >&2
+  echo "[Error] apt-get update failed with exit code: $UPDATE_EXIT" >&2
 fi
 
 timeout 30 apt-get install -y --no-install-recommends cifs-utils >/dev/null 2>&1
 INSTALL_EXIT=$?
 
 if [ $INSTALL_EXIT -eq 124 ]; then
-  echo "[Setup] apt-get install timed out after 30 seconds" >&2
-elif [ $INSTALL_EXIT -eq 0 ]; then
-  echo "[Setup] SMB/CIFS utilities installed successfully" >&2
-else
-  echo "[Setup] Failed to install SMB/CIFS utilities (exit code: $INSTALL_EXIT), continuing anyway..." >&2
+  echo "[Error] Package installation timed out after 30 seconds" >&2
+elif [ $INSTALL_EXIT -ne 0 ]; then
+  echo "[Error] Package installation failed with exit code: $INSTALL_EXIT" >&2
 fi
-
-echo "[Setup] Package installation phase complete" >&2
 `;
           let smbOptions = mountOptions || 'rw';
           if (mountUsername) {
@@ -219,66 +205,34 @@ echo "[Setup] Package installation phase complete" >&2
         }
         
         fullScript += `
-# Debug info
-echo "[Debug] Script continuing after package installation" >&2
-echo "[Debug] Current directory: $(pwd)" >&2
-echo "[Debug] Current user: $(whoami)" >&2
-
 # Create mount point
-mkdir -p ${mountPoint} || echo "[Error] Failed to create mount point ${mountPoint}" >&2
+mkdir -p ${mountPoint} 2>/dev/null
 
 # Try to mount network drive (continue on failure)
-echo "[Mount] Attempting to mount ${mountSource} to ${mountPoint}..." >&2
-if ${mountCommand} 2>&1; then
-  echo "[Mount] Mount successful" >&2
-  ls -la ${mountPoint} >&2
+if ${mountCommand}; then
+  :  # Mount successful, no output needed
 else
-  MOUNT_ERROR=$?
-  echo "[Mount] Mount failed with exit code: $MOUNT_ERROR" >&2
-  echo "[Mount] Mount command was: ${mountCommand}" >&2
+  MOUNT_EXIT=$?
+  echo "[Error] Mount failed with exit code: $MOUNT_EXIT" >&2
 fi
-
-echo "[Execute] Running user command..." >&2
-echo "[Execute] Command: ${cleanedCommand}" >&2
 
 # Execute user command regardless of mount status
 ${cleanedCommand}
 
-# Save the exit code
-COMMAND_EXIT_CODE=$?
-echo "[Execute] Command finished with exit code: $COMMAND_EXIT_CODE" >&2
-
 # Try to unmount (ignore errors)
-echo "[Cleanup] Unmounting ${mountPoint}..." >&2
-umount ${mountPoint} 2>/dev/null || echo "[Cleanup] Unmount failed or not mounted" >&2
-
-# Exit with the command's exit code
-exit $COMMAND_EXIT_CODE
+umount ${mountPoint} 2>/dev/null || true
 `;
       } else {
         fullScript = `#!/bin/bash
 # No mount configuration - just run the command
 set +e
 
-echo "[Info] No mount configuration detected" >&2
-echo "[Debug] Current directory: $(pwd)" >&2
-echo "[Debug] Current user: $(whoami)" >&2
-echo "[Execute] Running command: ${cleanedCommand}" >&2
-
 ${cleanedCommand}
-
-# Save and report exit code
-COMMAND_EXIT_CODE=$?
-echo "[Execute] Command finished with exit code: $COMMAND_EXIT_CODE" >&2
-exit $COMMAND_EXIT_CODE
 `;
         }
       
       // Encode the script to avoid shell escaping issues
       const encodedScript = Buffer.from(fullScript).toString('base64');
-      
-      console.log(`Creating container with image: ${imageName}`);
-      console.log(`Script length: ${fullScript.length} characters`);
       
       // Create container
       const container = await docker.createContainer({
