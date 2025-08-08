@@ -239,20 +239,41 @@ ${cleanedCommand}
         Image: imageName,
         Cmd: ['bash', '-c', `
           # Create non-root user with sudo privileges
-          groupadd -g 1000 activepieces || true
-          useradd -u 1000 -g 1000 -m -s /bin/bash activepieces || true
-          echo 'activepieces ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dpkg' >> /etc/sudoers
+          # Use UID/GID 1001 to avoid conflicts with common existing users
+          if ! id activepieces &>/dev/null; then
+            groupadd -g 1001 activepieces 2>/dev/null || true
+            useradd -u 1001 -g 1001 -m -s /bin/bash activepieces 2>/dev/null || {
+              # If UID 1001 is taken, find next available UID
+              for uid in {1002..1010}; do
+                if useradd -u $uid -g activepieces -m -s /bin/bash activepieces 2>/dev/null; then
+                  break
+                fi
+              done
+            }
+          fi
+          
+          # Ensure sudo privileges (append only if not already present)
+          if ! grep -q "activepieces ALL=(ALL) NOPASSWD:" /etc/sudoers 2>/dev/null; then
+            echo 'activepieces ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dpkg' >> /etc/sudoers
+          fi
           
           # Create workspace directory with proper permissions
           mkdir -p /workspace
-          chown activepieces:activepieces /workspace
+          chown activepieces:activepieces /workspace 2>/dev/null || {
+            # If user creation failed, just use current user
+            echo "Warning: Could not create activepieces user, running as $(whoami)" >&2
+          }
           
-          # Decode and execute the script as non-root user
+          # Decode and execute the script
           echo '${encodedScript}' | base64 -d > /tmp/user_script.sh
           chmod +x /tmp/user_script.sh
           
-          # Switch to non-root user and execute
-          su - activepieces -c 'cd /workspace && bash /tmp/user_script.sh'
+          # Switch to non-root user if it exists, otherwise run as current user
+          if id activepieces &>/dev/null; then
+            su - activepieces -c 'cd /workspace && bash /tmp/user_script.sh'
+          else
+            cd /workspace && bash /tmp/user_script.sh
+          fi
         `],
         WorkingDir: '/workspace',
         HostConfig: {

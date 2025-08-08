@@ -89,7 +89,7 @@ Executes bash commands in a Docker container with automatic installation of moun
 - **Timeout**: Maximum execution time
 
 **Security Features:**
-- Runs as non-root user (`activepieces` with UID/GID 1000)
+- Runs as non-root user (`activepieces` with UID/GID 1001)
 - Limited sudo access only for mounting and package installation
 - Resource limits (512MB RAM, 50% CPU)
 - Automatic cleanup after execution
