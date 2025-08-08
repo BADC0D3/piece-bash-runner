@@ -238,6 +238,23 @@ ${cleanedCommand}
       const container = await docker.createContainer({
         Image: imageName,
         Cmd: ['bash', '-c', `
+          # First, ensure sudo is installed (as root)
+          export DEBIAN_FRONTEND=noninteractive
+          
+          # Check if apt-get is available (for Debian/Ubuntu based images)
+          if command -v apt-get &>/dev/null; then
+            apt-get update -qq >/dev/null 2>&1 || echo "Warning: apt-get update failed" >&2
+            apt-get install -y --no-install-recommends sudo coreutils >/dev/null 2>&1 || echo "Warning: package installation failed" >&2
+          elif command -v apk &>/dev/null; then
+            # Alpine Linux
+            apk add --no-cache sudo coreutils >/dev/null 2>&1 || echo "Warning: package installation failed" >&2
+          elif command -v yum &>/dev/null; then
+            # CentOS/RHEL
+            yum install -y sudo coreutils >/dev/null 2>&1 || echo "Warning: package installation failed" >&2
+          else
+            echo "Warning: No supported package manager found, sudo might not be available" >&2
+          fi
+          
           # Create non-root user with sudo privileges
           # Use UID/GID 1001 to avoid conflicts with common existing users
           if ! id activepieces &>/dev/null; then
@@ -254,7 +271,7 @@ ${cleanedCommand}
           
           # Ensure sudo privileges (append only if not already present)
           if ! grep -q "activepieces ALL=(ALL) NOPASSWD:" /etc/sudoers 2>/dev/null; then
-            echo 'activepieces ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dpkg' >> /etc/sudoers
+            echo 'activepieces ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
           fi
           
           # Create workspace directory with proper permissions
