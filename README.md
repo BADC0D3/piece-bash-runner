@@ -87,10 +87,12 @@ Executes bash commands in a Docker container with automatic installation of moun
 - **Mount Configuration**: Optional NFS/SMB mount settings  
 - **Docker Image**: Base image to use (default: ubuntu:latest)
 - **Timeout**: Maximum execution time
+- **Run as Root**: Toggle to run commands as root user (default: false, less secure)
 
 **Security Features:**
 - Privileged operations (mounting) run as root
-- User commands run as non-root user (`activepieces` UID/GID 1001) without sudo access
+- User commands run as non-root user (`activepieces` UID/GID 1001) without sudo access by default
+- Option to run commands as root when explicitly needed
 - Proper privilege separation between system operations and user code
 - Resource limits (512MB RAM, 50% CPU)
 - Automatic cleanup after execution
@@ -188,6 +190,24 @@ echo ""
 echo "=== Memory Usage ==="
 free -h
 ```
+
+### Running Commands as Root (When Needed)
+For operations that require root privileges, enable the "Run as Root" option:
+
+```bash
+#!/bin/bash
+# Example: Installing system packages (requires root)
+apt-get update
+apt-get install -y htop iotop
+
+# Example: Modifying system files
+echo "192.168.1.100 myserver.local" >> /etc/hosts
+
+# Example: System administration tasks
+systemctl status docker
+```
+
+**Note:** Running as root should only be used when absolutely necessary. The default non-root execution provides better security.
 
 ## Troubleshooting
 

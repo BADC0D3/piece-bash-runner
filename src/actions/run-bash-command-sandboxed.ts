@@ -81,6 +81,12 @@ df -h`,
       required: false,
       defaultValue: 30,
     }),
+    runAsRoot: Property.Checkbox({
+      displayName: 'Run as Root',
+      description: 'Run commands as root user instead of non-root user (less secure)',
+      required: false,
+      defaultValue: false,
+    }),
   },
   async run(context: ActionContext) {
     const { 
@@ -92,7 +98,8 @@ df -h`,
       mountUsername,
       mountPassword,
       dockerImage, 
-      timeout 
+      timeout,
+      runAsRoot 
     } = context.propsValue;
     const docker = new Docker();
     
@@ -191,25 +198,38 @@ else
   echo "[Error] Mount failed with exit code: $MOUNT_EXIT" >&2
 fi
 
+${runAsRoot ? `
+# Execute command as root
+cd /workspace
+${cleanedCommand}
+` : `
 # Switch to non-root user for command execution
 su - activepieces << 'EOF'
 cd /workspace
 ${cleanedCommand}
 EOF
+`}
 
 # Unmount as root (after user command completes)
 umount ${mountPoint} 2>/dev/null || true
 `;
       } else {
-        // No mount needed, just run command as non-root user
+        // No mount needed
         fullScript = `#!/bin/bash
-# No mount configuration - run command as non-root user
+# No mount configuration
 set +e
 
+${runAsRoot ? `
+# Execute command as root
+cd /workspace
+${cleanedCommand}
+` : `
+# Run command as non-root user
 su - activepieces << 'EOF'
 cd /workspace
 ${cleanedCommand}
 EOF
+`}
 `;
       }
       
