@@ -206,7 +206,7 @@ fi
         
         fullScript += `
 # Create mount point
-mkdir -p ${mountPoint} 2>/dev/null
+sudo mkdir -p ${mountPoint} 2>/dev/null || echo "[Warning] Could not create mount point ${mountPoint}" >&2
 
 # Try to mount network drive (continue on failure)
 if ${mountCommand}; then
