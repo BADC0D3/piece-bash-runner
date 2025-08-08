@@ -89,8 +89,9 @@ Executes bash commands in a Docker container with automatic installation of moun
 - **Timeout**: Maximum execution time
 
 **Security Features:**
-- Runs as non-root user (`activepieces` with UID/GID 1001)
-- Limited sudo access only for mounting and package installation
+- Privileged operations (mounting) run as root
+- User commands run as non-root user (`activepieces` UID/GID 1001) without sudo access
+- Proper privilege separation between system operations and user code
 - Resource limits (512MB RAM, 50% CPU)
 - Automatic cleanup after execution
 
@@ -127,9 +128,10 @@ Common SMB mount options:
 
 ### Sandboxed Version
 - Runs in Docker container with limited resources
-- Commands execute as non-root user (`activepieces`)
+- Mounting operations performed as root for security
+- User commands execute as non-root user without sudo privileges
 - Container has `SYS_ADMIN` capability for mounting
-- Only specific commands can be run with sudo (mount/umount/apt)
+- Proper privilege separation ensures user code cannot perform system operations
 - Isolated from host system
 
 ### Best Practices

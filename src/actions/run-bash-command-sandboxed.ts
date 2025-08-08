@@ -136,64 +136,34 @@ df -h`,
       if (mountType && mountSource) {
         // Build mount command
         let mountCommand = '';
+        let installPackages = '';
+        
         if (mountType === 'nfs') {
-          // Install nfs utilities if needed - suppress output
-          fullScript += `#!/bin/bash
-# Don't exit on error - we want to continue even if mount fails
-set +e
-
-# Set non-interactive mode for apt-get
+          installPackages = `
+# Install NFS utilities as root
 export DEBIAN_FRONTEND=noninteractive
-
-# Try to install with timeout and non-interactive flags
-timeout 30 sudo apt-get update -qq >/dev/null 2>&1
-UPDATE_EXIT=$?
-
-if [ $UPDATE_EXIT -eq 124 ]; then
-  echo "[Error] apt-get update timed out after 30 seconds" >&2
-elif [ $UPDATE_EXIT -ne 0 ]; then
-  echo "[Error] apt-get update failed with exit code: $UPDATE_EXIT" >&2
-fi
-
-timeout 30 sudo apt-get install -y --no-install-recommends nfs-common >/dev/null 2>&1
-INSTALL_EXIT=$?
-
-if [ $INSTALL_EXIT -eq 124 ]; then
-  echo "[Error] Package installation timed out after 30 seconds" >&2
-elif [ $INSTALL_EXIT -ne 0 ]; then
-  echo "[Error] Package installation failed with exit code: $INSTALL_EXIT" >&2
-fi
-`;
+if command -v apt-get &>/dev/null; then
+  timeout 30 apt-get update -qq >/dev/null 2>&1 || echo "[Warning] apt-get update failed" >&2
+  timeout 30 apt-get install -y --no-install-recommends nfs-common >/dev/null 2>&1 || echo "[Warning] nfs-common installation failed" >&2
+elif command -v apk &>/dev/null; then
+  apk add --no-cache nfs-utils >/dev/null 2>&1 || echo "[Warning] nfs-utils installation failed" >&2
+elif command -v yum &>/dev/null; then
+  yum install -y nfs-utils >/dev/null 2>&1 || echo "[Warning] nfs-utils installation failed" >&2
+fi`;
           const nfsOptions = mountOptions || 'rw,sync';
-          mountCommand = `sudo mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
+          mountCommand = `mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
         } else if (mountType === 'smb') {
-          // Install cifs utilities if needed - suppress output
-          fullScript += `#!/bin/bash
-# Don't exit on error - we want to continue even if mount fails
-set +e
-
-# Set non-interactive mode for apt-get
+          installPackages = `
+# Install CIFS utilities as root
 export DEBIAN_FRONTEND=noninteractive
-
-# Try to install with timeout and non-interactive flags
-timeout 30 sudo apt-get update -qq >/dev/null 2>&1
-UPDATE_EXIT=$?
-
-if [ $UPDATE_EXIT -eq 124 ]; then
-  echo "[Error] apt-get update timed out after 30 seconds" >&2
-elif [ $UPDATE_EXIT -ne 0 ]; then
-  echo "[Error] apt-get update failed with exit code: $UPDATE_EXIT" >&2
-fi
-
-timeout 30 sudo apt-get install -y --no-install-recommends cifs-utils >/dev/null 2>&1
-INSTALL_EXIT=$?
-
-if [ $INSTALL_EXIT -eq 124 ]; then
-  echo "[Error] Package installation timed out after 30 seconds" >&2
-elif [ $INSTALL_EXIT -ne 0 ]; then
-  echo "[Error] Package installation failed with exit code: $INSTALL_EXIT" >&2
-fi
-`;
+if command -v apt-get &>/dev/null; then
+  timeout 30 apt-get update -qq >/dev/null 2>&1 || echo "[Warning] apt-get update failed" >&2
+  timeout 30 apt-get install -y --no-install-recommends cifs-utils >/dev/null 2>&1 || echo "[Warning] cifs-utils installation failed" >&2
+elif command -v apk &>/dev/null; then
+  apk add --no-cache cifs-utils >/dev/null 2>&1 || echo "[Warning] cifs-utils installation failed" >&2
+elif command -v yum &>/dev/null; then
+  yum install -y cifs-utils >/dev/null 2>&1 || echo "[Warning] cifs-utils installation failed" >&2
+fi`;
           let smbOptions = mountOptions || 'rw';
           if (mountUsername) {
             smbOptions += `,username=${mountUsername}`;
@@ -201,35 +171,47 @@ fi
               smbOptions += `,password=${mountPassword}`;
             }
           }
-          mountCommand = `sudo mount -t cifs -o ${smbOptions} ${mountSource} ${mountPoint}`;
+          mountCommand = `mount -t cifs -o ${smbOptions} ${mountSource} ${mountPoint}`;
         }
         
-        fullScript += `
-# Create mount point
-sudo mkdir -p ${mountPoint} 2>/dev/null || echo "[Warning] Could not create mount point ${mountPoint}" >&2
+        fullScript = `#!/bin/bash
+# Script runs as root initially
+set +e
 
-# Try to mount network drive (continue on failure)
+${installPackages}
+
+# Create mount point as root
+mkdir -p ${mountPoint} 2>/dev/null || echo "[Warning] Could not create mount point ${mountPoint}" >&2
+
+# Mount network drive as root
 if ${mountCommand}; then
-  :  # Mount successful, no output needed
+  echo "[Info] Mount successful"
 else
   MOUNT_EXIT=$?
   echo "[Error] Mount failed with exit code: $MOUNT_EXIT" >&2
 fi
 
-# Execute user command regardless of mount status
+# Switch to non-root user for command execution
+su - activepieces << 'EOF'
+cd /workspace
 ${cleanedCommand}
+EOF
 
-# Try to unmount (ignore errors)
-sudo umount ${mountPoint} 2>/dev/null || true
+# Unmount as root (after user command completes)
+umount ${mountPoint} 2>/dev/null || true
 `;
       } else {
+        // No mount needed, just run command as non-root user
         fullScript = `#!/bin/bash
-# No mount configuration - just run the command
+# No mount configuration - run command as non-root user
 set +e
 
+su - activepieces << 'EOF'
+cd /workspace
 ${cleanedCommand}
+EOF
 `;
-        }
+      }
       
       // Encode the script to avoid shell escaping issues
       const encodedScript = Buffer.from(fullScript).toString('base64');
@@ -238,25 +220,19 @@ ${cleanedCommand}
       const container = await docker.createContainer({
         Image: imageName,
         Cmd: ['bash', '-c', `
-          # First, ensure sudo is installed (as root)
+          # Running as root initially
           export DEBIAN_FRONTEND=noninteractive
           
-          # Check if apt-get is available (for Debian/Ubuntu based images)
+          # Install necessary packages if needed
           if command -v apt-get &>/dev/null; then
             apt-get update -qq >/dev/null 2>&1 || echo "Warning: apt-get update failed" >&2
-            apt-get install -y --no-install-recommends sudo coreutils >/dev/null 2>&1 || echo "Warning: package installation failed" >&2
-          elif command -v apk &>/dev/null; then
-            # Alpine Linux
-            apk add --no-cache sudo coreutils >/dev/null 2>&1 || echo "Warning: package installation failed" >&2
-          elif command -v yum &>/dev/null; then
-            # CentOS/RHEL
-            yum install -y sudo coreutils >/dev/null 2>&1 || echo "Warning: package installation failed" >&2
-          else
-            echo "Warning: No supported package manager found, sudo might not be available" >&2
+            # Only install coreutils if timeout command is missing
+            if ! command -v timeout &>/dev/null; then
+              apt-get install -y --no-install-recommends coreutils >/dev/null 2>&1 || echo "Warning: coreutils installation failed" >&2
+            fi
           fi
           
-          # Create non-root user with sudo privileges
-          # Use UID/GID 1001 to avoid conflicts with common existing users
+          # Create non-root user (without sudo privileges)
           if ! id activepieces &>/dev/null; then
             groupadd -g 1001 activepieces 2>/dev/null || true
             useradd -u 1001 -g 1001 -m -s /bin/bash activepieces 2>/dev/null || {
@@ -269,28 +245,17 @@ ${cleanedCommand}
             }
           fi
           
-          # Ensure sudo privileges (append only if not already present)
-          if ! grep -q "activepieces ALL=(ALL) NOPASSWD:" /etc/sudoers 2>/dev/null; then
-            echo 'activepieces ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
-          fi
-          
           # Create workspace directory with proper permissions
           mkdir -p /workspace
-          chown activepieces:activepieces /workspace 2>/dev/null || {
-            # If user creation failed, just use current user
-            echo "Warning: Could not create activepieces user, running as $(whoami)" >&2
-          }
+          chown activepieces:activepieces /workspace
           
-          # Decode and execute the script
+          # Decode the user script
           echo '${encodedScript}' | base64 -d > /tmp/user_script.sh
           chmod +x /tmp/user_script.sh
+          chown activepieces:activepieces /tmp/user_script.sh
           
-          # Switch to non-root user if it exists, otherwise run as current user
-          if id activepieces &>/dev/null; then
-            su - activepieces -c 'cd /workspace && bash /tmp/user_script.sh'
-          else
-            cd /workspace && bash /tmp/user_script.sh
-          fi
+          # Execute the script (mount operations will be handled inside)
+          bash /tmp/user_script.sh
         `],
         WorkingDir: '/workspace',
         HostConfig: {
