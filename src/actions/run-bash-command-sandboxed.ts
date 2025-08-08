@@ -146,7 +146,7 @@ set +e
 export DEBIAN_FRONTEND=noninteractive
 
 # Try to install with timeout and non-interactive flags
-timeout 30 apt-get update -qq >/dev/null 2>&1
+timeout 30 sudo apt-get update -qq >/dev/null 2>&1
 UPDATE_EXIT=$?
 
 if [ $UPDATE_EXIT -eq 124 ]; then
@@ -155,7 +155,7 @@ elif [ $UPDATE_EXIT -ne 0 ]; then
   echo "[Error] apt-get update failed with exit code: $UPDATE_EXIT" >&2
 fi
 
-timeout 30 apt-get install -y --no-install-recommends nfs-common >/dev/null 2>&1
+timeout 30 sudo apt-get install -y --no-install-recommends nfs-common >/dev/null 2>&1
 INSTALL_EXIT=$?
 
 if [ $INSTALL_EXIT -eq 124 ]; then
@@ -165,7 +165,7 @@ elif [ $INSTALL_EXIT -ne 0 ]; then
 fi
 `;
           const nfsOptions = mountOptions || 'rw,sync';
-          mountCommand = `mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
+          mountCommand = `sudo mount -t nfs -o ${nfsOptions} ${mountSource} ${mountPoint}`;
         } else if (mountType === 'smb') {
           // Install cifs utilities if needed - suppress output
           fullScript += `#!/bin/bash
@@ -176,7 +176,7 @@ set +e
 export DEBIAN_FRONTEND=noninteractive
 
 # Try to install with timeout and non-interactive flags
-timeout 30 apt-get update -qq >/dev/null 2>&1
+timeout 30 sudo apt-get update -qq >/dev/null 2>&1
 UPDATE_EXIT=$?
 
 if [ $UPDATE_EXIT -eq 124 ]; then
@@ -185,7 +185,7 @@ elif [ $UPDATE_EXIT -ne 0 ]; then
   echo "[Error] apt-get update failed with exit code: $UPDATE_EXIT" >&2
 fi
 
-timeout 30 apt-get install -y --no-install-recommends cifs-utils >/dev/null 2>&1
+timeout 30 sudo apt-get install -y --no-install-recommends cifs-utils >/dev/null 2>&1
 INSTALL_EXIT=$?
 
 if [ $INSTALL_EXIT -eq 124 ]; then
@@ -201,7 +201,7 @@ fi
               smbOptions += `,password=${mountPassword}`;
             }
           }
-          mountCommand = `mount -t cifs -o ${smbOptions} ${mountSource} ${mountPoint}`;
+          mountCommand = `sudo mount -t cifs -o ${smbOptions} ${mountSource} ${mountPoint}`;
         }
         
         fullScript += `
@@ -220,7 +220,7 @@ fi
 ${cleanedCommand}
 
 # Try to unmount (ignore errors)
-umount ${mountPoint} 2>/dev/null || true
+sudo umount ${mountPoint} 2>/dev/null || true
 `;
       } else {
         fullScript = `#!/bin/bash
@@ -237,7 +237,23 @@ ${cleanedCommand}
       // Create container
       const container = await docker.createContainer({
         Image: imageName,
-        Cmd: ['bash', '-c', `echo '${encodedScript}' | base64 -d | bash`],
+        Cmd: ['bash', '-c', `
+          # Create non-root user with sudo privileges
+          groupadd -g 1000 activepieces || true
+          useradd -u 1000 -g 1000 -m -s /bin/bash activepieces || true
+          echo 'activepieces ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dpkg' >> /etc/sudoers
+          
+          # Create workspace directory with proper permissions
+          mkdir -p /workspace
+          chown activepieces:activepieces /workspace
+          
+          # Decode and execute the script as non-root user
+          echo '${encodedScript}' | base64 -d > /tmp/user_script.sh
+          chmod +x /tmp/user_script.sh
+          
+          # Switch to non-root user and execute
+          su - activepieces -c 'cd /workspace && bash /tmp/user_script.sh'
+        `],
         WorkingDir: '/workspace',
         HostConfig: {
           AutoRemove: true,

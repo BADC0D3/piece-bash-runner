@@ -84,11 +84,17 @@ Executes bash commands in a Docker container with automatic installation of moun
 
 **Properties:**
 - **Bash Command**: The command or script to execute
-- **Mount Configuration**: Optional NFS/SMB mount settings
+- **Mount Configuration**: Optional NFS/SMB mount settings  
 - **Docker Image**: Base image to use (default: ubuntu:latest)
 - **Timeout**: Maximum execution time
 
-**Requirements:**
+**Security Features:**
+- Runs as non-root user (`activepieces` with UID/GID 1000)
+- Limited sudo access only for mounting and package installation
+- Resource limits (512MB RAM, 50% CPU)
+- Automatic cleanup after execution
+
+**Required Permissions:**
 - Docker socket access: `-v /var/run/docker.sock:/var/run/docker.sock`
 - Container runs with `SYS_ADMIN` capability for mounting
 
@@ -121,8 +127,10 @@ Common SMB mount options:
 
 ### Sandboxed Version
 - Runs in Docker container with limited resources
+- Commands execute as non-root user (`activepieces`)
 - Container has `SYS_ADMIN` capability for mounting
-- Network isolation can be configured
+- Only specific commands can be run with sudo (mount/umount/apt)
+- Isolated from host system
 
 ### Best Practices
 1. Use read-only mounts when possible (`ro` option)
